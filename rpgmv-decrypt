@@ -1,0 +1,57 @@
+#!/usr/bin/node
+
+const fs = require("fs");
+const path = require("path");
+const process = require("process");
+const console = require("console");
+
+function scandir(dir, cb) {
+	fs.readdir(dir, (err, filenames) => {
+		if (err) throw err;
+		filenames.forEach((filename) => {
+			filename = path.resolve(dir, filename);
+			fs.stat(filename, (err, stat) => {
+				if (err) throw err;
+				if (stat.isDirectory()) {
+					scandir(filename, cb);
+				} else if (stat.isFile()) {
+					cb(filename);
+				}
+			});
+		});
+	});
+}
+
+function key_from_file(filename) {
+	const hex = JSON.parse(fs.readFileSync(filename, "utf-8")).encryptionKey;
+	let key = [];
+	for (let i = 0; i < hex.length / 2; ++i) {
+		key[i] = parseInt(hex.substr(i * 2, 2), 16);
+	}
+	return key;
+}
+
+function decrypt_image(key, filename, len) {
+	console.log(filename);
+	let bytes = fs.readFileSync(filename);
+	for(var i = 0; i < 16; i++) {
+		bytes[i + 16] ^= key[i];
+	}
+	const output_filename = filename.substring(0, filename.length - len) + "png";
+	fs.writeFileSync(output_filename, bytes.slice(16));
+	fs.unlinkSync(filename);
+}
+
+if (process.argv.length > 2) {
+	const key_filename = path.join(process.argv[2], "www", "data", "System.json");
+	const key = key_from_file(key_filename);
+
+	const image_path = path.join(process.argv[2], "www", "img");
+	scandir(image_path, (filename) => {
+		if (filename.endsWith(".rpgmvp")) {
+			decrypt_image(key, filename, 6);
+		} else if (filename.endsWith(".png_")) {
+			decrypt_image(key, filename, 4);
+		}
+	});
+}
